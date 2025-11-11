@@ -1,0 +1,16 @@
+# k8s/base/service.yaml
+---
+# Service for Spark UI
+apiVersion: v1
+kind: Service
+metadata:
+  name: spark-ui
+  namespace: docling-spark
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 4040
+    targetPort: 4040
+    name: spark-ui
+  selector:
+    spark-role: driver

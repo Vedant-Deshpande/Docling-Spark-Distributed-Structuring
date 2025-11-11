@@ -262,35 +262,9 @@ def main():
         print(f"   ✅ Successful: {successful}")
         print(f"   ❌ Failed: {failed}")
         
-        # Show successful files with enhanced details
-        if successful > 0:
-            print("\n✅ Successful files:")
-            success_df = df_final.filter(col("success") == True)
-            success_df.select(
-                "document_path", 
-                "success",
-                col("metadata.file_name").alias("file_name"),
-                col("metadata.num_pages").alias("pages"),
-                col("metadata.confidence_score").alias("confidence"),
-                col("metadata.file_size").alias("size_bytes")
-            ).show(truncate=False)
-            
-            # Show content preview for successful files
-            print("\n📄 Content preview (first 200 chars):")
-            for row in success_df.collect():
-                content = row['content']
-                if content:
-                    preview = content[:200] + "..." if len(content) > 200 else content
-                    print(f"   File: {Path(row['document_path']).name}")
-                    print(f"   Content: {preview}")
-                    print()
-        
-        # Show failed files
-        if failed > 0:
-            print("\n❌ Failed files:")
-            df_final.filter(col("success") == False).select(
-                "document_path", "error_message"
-            ).show(truncate=False)
+        # Skip detailed display to avoid memory/serialization issues
+        print("\n💡 Skipping detailed result display to prevent worker crashes.")
+        print("   Full results will be saved to the output file...")
         
         # ========== STEP 8: Save results as JSONL ==========
         print("\n💾 Step 6: Saving results...")
@@ -301,17 +275,6 @@ def main():
 
         print(f"   ✅ Results saved to: {output_path}")
         print("\n🎉 ALL DONE!")
-    
-        # Show summary statistics
-        print("\n📊 Summary Statistics:")
-        if successful > 0:
-            # Calculate average content length
-            content_lengths = [len(row['content']) for row in success_df.collect() if row['content']]
-            if content_lengths:
-                avg_length = sum(content_lengths) / len(content_lengths)
-                print(f"   Average content length: {avg_length:.0f} characters")
-                print(f"   Total content extracted: {sum(content_lengths):,} characters")
-        
         print("✅ Enhanced processing complete!")
         
     except Exception as e:

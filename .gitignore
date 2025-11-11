@@ -1,4 +1,5 @@
-assets/
+k8s/**/secrets.yaml
+assets/ 
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
@@ -144,6 +145,7 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+.env.local
 
 # Spyder project settings
 .spyderproject

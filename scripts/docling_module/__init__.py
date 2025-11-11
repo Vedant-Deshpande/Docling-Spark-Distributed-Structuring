@@ -1,20 +1,5 @@
 """
 Docling Module - Document Processing Package
-=============================================
-
-Main Components:
-    - DoclingPDFProcessor: Main processor class
-    - DocumentConfig: Configuration data class
-    - ProcessingResult: Result data class
-    - DocumentProcessorFactory: Factory for creating processors
-    - docling_process: Simple function API
-
-Usage:
-    from docling_module import docling_process
-    
-    result = docling_process("document.pdf")
-    if result.success:
-        print(result.content)
 """
 
 from .processor import (
@@ -32,7 +17,7 @@ from .processor import (
 )
 
 __version__ = "1.0.0"
-__author__ = "Your Name"
+__author__ = "Rishabh Singh"
 
 __all__ = [
     # Classes

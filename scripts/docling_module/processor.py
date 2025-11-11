@@ -159,12 +159,12 @@ class DoclingPDFProcessor(DocumentProcessorInterface):
                 force_full_page_ocr=self._config.force_ocr
             )
 
-        # Create and return the converter with modern backend
+        # Create and return the converter 
         converter = DocumentConverter(
             format_options={
                 InputFormat.PDF: PdfFormatOption(
                     pipeline_options=pipeline_options,
-                    backend=DoclingParseV4DocumentBackend,  # Modern backend
+                    backend=DoclingParseV4DocumentBackend,  
                     pipeline_cls=StandardPdfPipeline,
                 )
             }

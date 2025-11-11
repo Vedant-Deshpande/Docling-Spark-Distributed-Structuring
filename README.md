@@ -513,52 +513,498 @@ spark.sparkContext.addPyFile(zip_path)
 - Sweet spot: 4 workers × 4 threads = 16 parallel threads
 
 
-## 🚀 Future: Kubernetes Deployment
+## 🚀 Kubernetes Deployment (PRODUCTION READY!)
 
-When you're ready to scale beyond a single machine, you can deploy this system to Kubernetes. Here's a high-level overview:
+Deploy this system to Kubernetes for true distributed, scalable PDF processing. **This is now fully implemented and tested!**
 
-### What Would Need to Change
+### 🎯 Quick Deploy
 
-1. **Containerization**
-   - Create a Dockerfile with Spark, Python, and dependencies
-   - Build Docker image with your code
-   - Push to container registry (Docker Hub, ECR, GCR)
+```bash
+# 1. Ensure Kubernetes is running
+kubectl cluster-info
 
-2. **Spark Configuration**
-   - Change master from `local[4]` to `k8s://https://your-k8s-api`
-   - Configure Docker image for workers
-   - Set up Kubernetes namespace and RBAC
+# 2. Build and push Docker image
+docker build -t quay.io/YOUR_USERNAME/docling-spark:latest .
+docker push quay.io/YOUR_USERNAME/docling-spark:latest
 
-3. **Storage**
-   - Replace local filesystem with S3/GCS/Azure Blob
-   - Configure cloud storage credentials
-   - Update input/output paths
+# 3. Deploy to Kubernetes
+kubectl apply -f k8s/base/namespace.yaml
+kubectl apply -f k8s/base/rbac.yaml
+kubectl apply -f k8s/base/storage.yaml
+kubectl apply -f k8s/base/configmap.yaml
+kubectl apply -f k8s/base/service.yaml
+kubectl apply -f k8s/spark-submit-job.yaml
 
-4. **Resource Management**
-   - Define CPU/memory limits for pods
-   - Configure auto-scaling
-   - Set up monitoring and logging
+# 4. Monitor the job
+kubectl get pods -n docling-spark -w
+kubectl logs -f -n docling-spark -l component=driver
+```
 
-### Benefits of Kubernetes
+---
 
-- **Scale:** Process 10,000+ PDFs across multiple nodes
-- **Fault Tolerance:** Auto-restart failed workers
-- **Auto-Scaling:** Dynamically add/remove workers based on load
-- **Cost Optimization:** Use spot instances for batch jobs
-- **Monitoring:** Integrate with Prometheus/Grafana
+### 📋 Prerequisites
 
-### Required Components
+#### 1. **Kubernetes Cluster**
 
-- Kubernetes cluster (EKS, GKE, AKS, or self-hosted)
-- Container registry
-- Cloud storage (S3, GCS, or Azure Blob)
-- Spark Kubernetes operator (optional but recommended)
+**Option A: Docker Desktop (Local Development) ✅ RECOMMENDED**
+```bash
+# Install Docker Desktop
+brew install --cask docker  # macOS
 
-### Estimated Effort
+# Enable Kubernetes in Docker Desktop:
+# 1. Open Docker Desktop
+# 2. Settings → Kubernetes
+# 3. Check "Enable Kubernetes"
+# 4. Click "Apply & Restart"
+# 5. Wait 2-3 minutes
 
-- **Setup time:** 1-2 days for first deployment
-- **Configuration:** Create Dockerfile, K8s manifests, modify Spark config
-- **Testing:** Validate end-to-end workflow
-- **Documentation:** Track cloud-specific settings
+# Verify
+kubectl cluster-info
+kubectl get nodes
+```
 
+**Option B: Minikube**
+```bash
+brew install minikube
+minikube start --driver=docker --cpus=4 --memory=8192
+```
 
+**Option C: Cloud (Production)**
+- AWS EKS
+- Google GKE
+- Azure AKS
+
+#### 2. **Container Registry**
+
+We use **Quay.io** (free, public repositories):
+
+```bash
+# Create account at https://quay.io
+# Login
+docker login quay.io
+```
+
+**Alternatives:**
+- Docker Hub: `docker.io/username/image`
+- GitHub Container Registry: `ghcr.io/username/image`
+- AWS ECR, Google GCR, Azure ACR
+
+#### 3. **Tools**
+```bash
+# Verify you have these
+docker --version
+kubectl version --client
+```
+
+---
+
+### 🏗️ Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  KUBERNETES CLUSTER (Docker Desktop / Cloud)                │
+│                                                             │
+│  ┌────────────────────────────────────────────────────┐     │
+│  │  NAMESPACE: docling-spark                          │     │
+│  │                                                    │     │
+│  │  ┌──────────────────────────────────────────────┐  │     │
+│  │  │  SPARK DRIVER POD                            │  │     │
+│  │  │  - Image: quay.io/username/docling-spark     │  │     │
+│  │  │  - Orchestrates job                          │  │     │
+│  │  │  - Creates executor pods                     │  │     │
+│  │  └──────────────────────────────────────────────┘  │     │
+│  │                       │                            │     │
+│  │         ┌─────────────┼──────────────┬─────────┐   │     │
+│  │         ▼             ▼              ▼         ▼   │     │
+│  │  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌───┐   │     │
+│  │  │Executor 1│  │Executor 2│  │Executor 3│  │...│   │     │
+│  │  │          │  │          │  │          │  │   │   │     │
+│  │  │Docling   │  │Docling   │  │Docling   │  │   │   │     │
+│  │  │Process   │  │Process   │  │Process   │  │   │   │     │
+│  │  │PDF A     │  │PDF B     │  │PDF C     │  │   │   │     │
+│  │  └──────────┘  └──────────┘  └──────────┘  └───┘   │     │
+│  │                                                    │     │
+│  │  ┌──────────────────────────────────────────────┐  │     │
+│  │  │  PERSISTENT STORAGE                          │  │     │
+│  │  │  - Input PVC (PDFs)                          │  │     │
+│  │  │  - Output PVC (Results)                      │  │     │
+│  │  └──────────────────────────────────────────────┘  │     │
+│  └────────────────────────────────────────────────────┘     │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 🐳 Kubernetes Components
+
+```
+k8s/
+├── base/
+│   ├── namespace.yaml       # Isolated namespace
+│   ├── rbac.yaml           # Permissions for Spark
+│   ├── storage.yaml        # PVCs for input/output
+│   ├── configmap.yaml      # Spark configuration
+│   ├── service.yaml        # Spark UI service
+│   └── secrets.yaml        # Image pull secrets
+├── spark-submit-job.yaml   # Main Spark job definition
+└── deploy.sh              # Automated deployment script
+```
+
+---
+
+### 📦 Step 1: Build Docker Image
+
+#### Dockerfile Overview
+
+```dockerfile
+FROM apache/spark-py:v3.5.0
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    tesseract-ocr poppler-utils
+
+# Install Python dependencies
+COPY requirements-docker.txt .
+RUN pip install -r requirements-docker.txt
+
+# Copy application code
+COPY scripts/ /app/scripts/
+COPY assets/ /app/assets/
+
+# Create spark user
+RUN useradd -m -u 185 -s /bin/bash spark
+ENV HOME=/home/spark
+USER spark
+
+ENTRYPOINT ["/opt/spark/bin/spark-submit"]
+```
+
+#### Build and Push
+
+```bash
+# 1. Navigate to project root
+cd /path/to/Docling-Spark-Distributed-Structuring
+
+# 2. Build the image
+docker build -t quay.io/YOUR_USERNAME/docling-spark:latest .
+
+# Expected output:
+# [+] Building 300.5s (15/15) FINISHED
+# => exporting to image
+# => naming to quay.io/YOUR_USERNAME/docling-spark:latest
+
+# 3. Login to Quay.io
+docker login quay.io
+# Username: YOUR_USERNAME
+# Password: YOUR_PASSWORD
+
+# 4. Push to registry
+docker push quay.io/YOUR_USERNAME/docling-spark:latest
+
+# Expected output:
+# The push refers to repository [quay.io/YOUR_USERNAME/docling-spark]
+# latest: digest: sha256:... size: 856
+
+# 5. Make repository public (on Quay.io website)
+# Go to: https://quay.io/repository/YOUR_USERNAME/docling-spark
+# Settings → Repository Visibility → Public
+```
+
+**Image Size:** ~1.5 GB compressed, ~5 GB uncompressed
+
+---
+
+### ☸️ Step 2: Deploy to Kubernetes
+
+#### Manual Deployment (Step-by-Step)
+
+```bash
+# 1. Create namespace
+kubectl apply -f k8s/base/namespace.yaml
+# Output: namespace/docling-spark created
+
+# 2. Create RBAC (ServiceAccount, Role, RoleBinding)
+kubectl apply -f k8s/base/rbac.yaml
+# Output: serviceaccount/spark-driver created
+#         role.rbac.authorization.k8s.io/spark-role created
+#         rolebinding.rbac.authorization.k8s.io/spark-role-binding created
+
+# 3. Create storage (PersistentVolumeClaims)
+kubectl apply -f k8s/base/storage.yaml
+# Output: persistentvolumeclaim/docling-input-pvc created
+#         persistentvolumeclaim/docling-output-pvc created
+
+# 4. Verify storage is bound
+kubectl get pvc -n docling-spark
+# NAME                 STATUS   VOLUME                                     CAPACITY
+# docling-input-pvc    Bound    pvc-xxx...                                10Gi
+# docling-output-pvc   Bound    pvc-yyy...                                20Gi
+
+# 5. Create ConfigMap
+kubectl apply -f k8s/base/configmap.yaml
+# Output: configmap/spark-config created
+
+# 6. Create Service (for Spark UI)
+kubectl apply -f k8s/base/service.yaml
+# Output: service/spark-ui created
+
+# 7. Update image name in job manifest (if needed)
+# Edit k8s/spark-submit-job.yaml lines 24 and 40:
+# image: quay.io/YOUR_USERNAME/docling-spark:latest
+
+# 8. Submit the Spark job
+kubectl apply -f k8s/spark-submit-job.yaml
+# Output: job.batch/docling-spark-job created
+```
+
+#### Automated Deployment
+
+```bash
+# Use the deployment script
+./k8s/deploy.sh
+
+# The script will:
+# 1. Create all resources in order
+# 2. Wait for storage to be ready
+# 3. Submit the Spark job
+# 4. Show you monitoring commands
+```
+
+---
+
+### 📊 Step 3: Monitor the Job
+
+#### Watch Pods
+
+```bash
+# Watch all pods in real-time
+kubectl get pods -n docling-spark -w
+
+# Expected output:
+# NAME                      READY   STATUS    RESTARTS   AGE
+# docling-spark-job-xxxxx   1/1     Running   0          10s
+```
+
+#### Check Job Status
+
+```bash
+# View job status
+kubectl get jobs -n docling-spark
+
+# Expected output:
+# NAME                STATUS     COMPLETIONS   DURATION   AGE
+# docling-spark-job   Complete   1/1           6m37s      11m
+```
+
+#### View Logs
+
+```bash
+# Follow driver logs (most useful!)
+kubectl logs -f -n docling-spark -l component=driver
+
+# Expected output:
+# ✅ Spark session created with 4 workers
+# 📂 Step 1: Getting list of PDF files...
+# 🔄 Step 3: Processing files...
+# ✅ Step 5: Results are ready!
+# 💾 Step 6: Saving results...
+# 🎉 ALL DONE!
+
+# View specific pod logs
+kubectl logs -n docling-spark docling-spark-job-xxxxx
+
+# View executor logs
+kubectl logs -n docling-spark -l spark-role=executor
+```
+
+#### Access Spark UI
+
+```bash
+# Port-forward Spark UI
+kubectl port-forward -n docling-spark svc/spark-ui 4040:4040
+
+# Open in browser:
+# http://localhost:4040
+```
+
+---
+
+### 📥 Step 4: Upload PDFs (Before Running Job)
+
+```bash
+# Create a temporary pod to access storage
+kubectl run -it --rm upload-pod \
+  --image=busybox \
+  --namespace=docling-spark \
+  --overrides='{
+    "spec": {
+      "containers": [{
+        "name": "upload",
+        "image": "busybox",
+        "command": ["sh"],
+        "volumeMounts": [{
+          "name": "input",
+          "mountPath": "/data"
+        }]
+      }],
+      "volumes": [{
+        "name": "input",
+        "persistentVolumeClaim": {
+          "claimName": "docling-input-pvc"
+        }
+      }]
+    }
+  }'
+
+# In another terminal, copy PDFs
+kubectl cp assets/2206.01062.pdf docling-spark/upload-pod:/data/
+
+# Or use the helper script
+./k8s/upload-pdfs.sh
+```
+
+---
+
+### 📤 Step 5: Retrieve Results
+
+```bash
+# Create a results viewer pod
+kubectl run -it --rm results-viewer \
+  --image=busybox \
+  --namespace=docling-spark \
+  --overrides='{
+    "spec": {
+      "containers": [{
+        "name": "viewer",
+        "image": "busybox",
+        "command": ["sh", "-c", "find /output -type f && sleep 3600"],
+        "volumeMounts": [{
+          "name": "output",
+          "mountPath": "/output"
+        }]
+      }],
+      "volumes": [{
+        "name": "output",
+        "persistentVolumeClaim": {
+          "claimName": "docling-output-pvc"
+        }
+      }]
+    }
+  }'
+
+# View results
+kubectl exec -n docling-spark results-viewer -- cat /output/results.jsonl/part-00000-*.json
+
+# Or use the helper script
+./k8s/get-results.sh
+```
+
+#### Sample Output
+
+```json
+{
+  "document_path": "/app/input/2206.01062.pdf",
+  "success": true,
+  "content": "## DocLayNet: A Large Human-Annotated Dataset for Document Layout Analysis\n\n...",
+  "metadata": {
+    "file_path": "/app/input/2206.01062.pdf",
+    "file_name": "2206.01062.pdf",
+    "confidence_score": "0.9639551330888779",
+    "num_pages": "19",
+    "file_extension": ".pdf",
+    "file_size": "4310680"
+  },
+  "error_message": null
+}
+```
+
+---
+
+### 🔄 Processing Flow on Kubernetes
+
+```
+1. User submits job
+   ↓
+2. Driver pod starts
+   ↓
+3. Driver creates executor pods (dynamic allocation)
+   ↓
+4. Driver reads PDF list from input PVC
+   ↓
+5. PDFs distributed to executors
+   ↓
+6. Each executor:
+   - Loads Docling module
+   - Processes assigned PDFs
+   - Extracts text + metadata
+   ↓
+7. Results collected by driver
+   ↓
+8. Results written to output PVC
+   ↓
+9. Job completes (pods terminate)
+   ↓
+10. User retrieves results from PVC
+```
+
+---
+
+### ⚙️ Configuration
+
+#### Resource Limits
+
+Edit `k8s/spark-submit-job.yaml`:
+
+```yaml
+# Driver resources
+resources:
+  requests:
+    memory: "4Gi"
+    cpu: "2"
+  limits:
+    memory: "6Gi"
+    cpu: "3"
+
+# Executor configuration
+- --conf
+- spark.executor.instances=5      # Number of executors
+- --conf
+- spark.executor.memory=4g        # RAM per executor
+- --conf
+- spark.executor.cores=2          # CPUs per executor
+```
+
+#### Storage Size
+
+Edit `k8s/base/storage.yaml`:
+
+```yaml
+# Input storage
+resources:
+  requests:
+    storage: 10Gi    # Increase if you have many PDFs
+
+# Output storage
+resources:
+  requests:
+    storage: 20Gi    # Increase if processing large volumes
+```
+
+---
+
+### 🧹 Cleanup
+
+```bash
+# Delete the job
+kubectl delete job docling-spark-job -n docling-spark
+
+# Delete all resources
+kubectl delete namespace docling-spark
+
+# Or delete individual components
+kubectl delete -f k8s/spark-submit-job.yaml
+kubectl delete -f k8s/base/service.yaml
+kubectl delete -f k8s/base/configmap.yaml
+kubectl delete -f k8s/base/storage.yaml
+kubectl delete -f k8s/base/rbac.yaml
+kubectl delete -f k8s/base/namespace.yaml
+```
