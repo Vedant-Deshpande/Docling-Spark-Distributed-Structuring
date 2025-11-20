@@ -7,21 +7,30 @@ A production-ready system for processing PDF documents at scale using Docling an
 - ✅ **Distributed Processing**: Process thousands of PDFs in parallel using Apache Spark
 - ✅ **High-Quality Extraction**: Powered by Docling's modern PDF processing pipeline
 - ✅ **Production-Ready**: Comprehensive error handling and fault tolerance
+- ✅ **Kubernetes/ROSA Ready**: Deploy on Red Hat OpenShift with Kubeflow Spark Operator
 - ✅ **Configurable**: Easily adjust workers, threads, and processing options
 - ✅ **Fast**: ~14 seconds per PDF (19 pages) with default settings
 - ✅ **Scalable**: Designed to scale from laptop to cloud
 
+## 🎯 Deployment Options
 
+### 🐳 **ROSA/Kubernetes (Recommended for Production)**
+Deploy on Red Hat OpenShift Service on AWS with the Kubeflow Spark Operator.
+
+👉 **[See MVP-SETUP.md for quick deployment guide](./MVP-SETUP.md)**
+
+### 💻 **Local Development**
+Run on your laptop for development and testing (see below).
 
 ## 📋 Table of Contents
-- [Quick Start](#-quick-start)
+- [Quick Start (Local)](#-quick-start)
+- [ROSA/Kubernetes Deployment](./MVP-SETUP.md)
 - [How It Works](#-how-it-works)
 - [Configuration](#️-configuration)
 - [Performance Tuning](#-performance-tuning)
 - [Understanding the Output](#-understanding-the-output)
 - [Troubleshooting](#-troubleshooting)
 - [Architecture Deep Dive](#-architecture-deep-dive)
-- [Future: Kubernetes Deployment](#-future-kubernetes-deployment)
 
 
 

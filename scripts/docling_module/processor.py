@@ -227,11 +227,13 @@ class DoclingPDFProcessor(DocumentProcessorInterface):
             )
         except Exception as e:
             # Error handling - return failure result with error message
+            import traceback
+            full_error = f"Error processing {file_path}: {str(e)}\nTraceback: {traceback.format_exc()}"
             return ProcessingResult(
                 success=False,
                 content="",
                 metadata={},
-                error_message=f"Error processing {file_path}: {str(e)}",
+                error_message=full_error,
                 file_path=file_path
             )
 

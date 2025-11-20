@@ -14,7 +14,7 @@ Think of it like this:
 # Step 1: Import the tools we need
 # ============================================================================
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import udf, col
+from pyspark.sql.functions import udf, col, to_json
 from pyspark.sql.types import (
     StructType,      # Like a template for a form
     StructField,     # Like a field on the form
@@ -23,6 +23,7 @@ from pyspark.sql.types import (
     MapType          # Dictionary/Key-Value pairs
 )
 import sys
+import argparse
 from pathlib import Path
 
 # Add our code to Python's search path
@@ -93,8 +94,7 @@ def create_spark():
     """
     Create the Spark "Driver" that manages everything.
     
-    local[4] means: Use 4 workers on this computer
-    (Like having 4 friends helping you)
+    When running in Spark Operator, master and resources are controlled by K8s.
     """
     print("*" * 70)
     print("Creating Spark session...")
@@ -102,11 +102,8 @@ def create_spark():
     
     spark = SparkSession.builder \
         .appName("DoclingSparkJob") \
-        .master("local[4]") \
         .config("spark.python.worker.reuse", "false") \
         .config("spark.sql.execution.arrow.pyspark.enabled", "false") \
-        .config("spark.executor.memory", "2g") \
-        .config("spark.driver.memory", "2g") \
         .config("spark.python.worker.faulthandler.enabled", "true") \
         .config("spark.sql.execution.pyspark.udf.faulthandler.enabled", "true") \
         .getOrCreate()
@@ -153,6 +150,10 @@ def main():
     """
     The main function that does everything step by step.
     """
+    parser = argparse.ArgumentParser(description="Docling Spark Job")
+    parser.add_argument("--input-dir", help="Directory containing input PDFs", default=None)
+    parser.add_argument("--output-file", help="Path to output JSONL file", default=None)
+    args = parser.parse_args()
     
     print("\n" + "="*70)
     print("📄 ENHANCED PDF PROCESSING WITH PYSPARK + DOCLING")
@@ -161,38 +162,37 @@ def main():
     # ========== STEP 1: Create Spark ==========
     spark = create_spark()
     
-    # Define output_path at the top level so it's accessible in finally block
-    output_path = Path(__file__).parent.parent / "output" / "results.jsonl"
+    # Define output_path
+    if args.output_file:
+        output_path = Path(args.output_file)
+    else:
+        output_path = Path(__file__).parent.parent / "output" / "results.jsonl"
     
     try:
         # ========== STEP 2: Get list of PDF files ==========
         print("\n📂 Step 1: Getting list of PDF files...")
         
-        assets_dir = Path(__file__).parent.parent / "assets"
-        pdf_path = assets_dir / "2206.01062.pdf"
+        if args.input_dir:
+            assets_dir = Path(args.input_dir)
+        else:
+            assets_dir = Path(__file__).parent.parent / "assets"
         
+        print(f"   Looking for PDFs in: {assets_dir}")
+        
+        if not assets_dir.exists():
+             print(f"   ❌ Input directory not found: {assets_dir}")
+             return
+
         # Create a list of file paths to process
-        # In real life, this could be thousands of files!
         file_list = []
         
-        # Add existing PDF files
-        if pdf_path.exists():
-            file_list.append((str(pdf_path),))
-            print(f"   ✅ Found PDF: {pdf_path.name}")
-        else:
-            print(f"   ⚠️  PDF not found: {pdf_path}")
-        
-        # Add a few more test cases
-        file_list.extend([
-            ("/fake/path/missing.pdf",),   # Will fail (doesn't exist)
-        ])
-        
-        # If we have the same PDF, add it again to show parallel processing
-        if pdf_path.exists():
-            file_list.append((str(pdf_path),))  # Same file again
+        # Find all PDFs in directory
+        for pdf_file in assets_dir.glob("*.pdf"):
+             file_list.append((str(pdf_file),))
+             print(f"   ✅ Found PDF: {pdf_file.name}")
         
         if not file_list:
-            print("   ❌ No files to process!")
+            print(f"   ❌ No PDF files found in {assets_dir}!")
             return
         
         # Create a DataFrame (like an Excel table)
@@ -238,18 +238,29 @@ def main():
             col("document_path"),
             col("result.success").alias("success"),
             col("result.content").alias("content"),
-            col("result.metadata").alias("metadata"),
+            to_json(col("result.metadata")).alias("metadata"), # <--- CHANGED: Convert Map to JSON String
             col("result.error_message").alias("error_message")
-        )
+        ).cache()
+        
+        # Force computation to cache it
+        count = df_final.count()
         
         # ========== STEP 6: Show the results ==========
-        print("\n✅ Step 5: Results are ready!\n")
+        print(f"\n✅ Step 5: Results are ready! (Count: {count})\n")
         
         print("📋 What the data looks like:")
         df_final.printSchema()
         
         print("\n📊 The results:")
         df_final.show(truncate=50)
+
+        # ========== STEP 6.5: Show full error messages for failed documents ==========
+        if df_final.filter(col("success") == False).count() > 0:
+            print("\n🔍 Full error messages for failed documents:")
+            failed_docs = df_final.filter(col("success") == False).select("document_path", "error_message")
+            for row in failed_docs.collect():
+                print(f"\n📄 {row['document_path']}:")
+                print(f"   Error: {row['error_message']}")
 
         # ========== STEP 7: Analyze results ==========
         print("\n📈 Analysis:")
@@ -271,11 +282,29 @@ def main():
 
         # Save as JSONL (JSON Lines - one JSON per line)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        df_final.coalesce(1).write.mode("overwrite").json(str(output_path))
+        
+        # --- FIX FOR MVP (No Shared Storage) ---
+        # Instead of distributed write (which lands on executors), 
+        # collect data to driver and write locally.
+        print("   Collecting data to driver to write locally...")
+        
+        # Convert to Pandas (safe for small-medium datasets < 2GB)
+        pdf = df_final.toPandas()
+        
+        # Write to JSONL using Pandas
+        pdf.to_json(output_path, orient='records', lines=True, force_ascii=False)
 
         print(f"   ✅ Results saved to: {output_path}")
         print("\n🎉 ALL DONE!")
         print("✅ Enhanced processing complete!")
+        
+        # ADD THIS BLOCK:
+        import time
+        print("😴 Sleeping for 60 minutes to allow file download...")
+        print("   Run: kubectl cp docling-spark-job-driver:/app/output/results.jsonl ./output/results.jsonl -n docling-spark")
+        time.sleep(3600)  # Sleep for 3600 seconds (60 minutes)
+
+        spark.stop()
         
     except Exception as e:
         print(f"\n❌ ERROR: {e}")
