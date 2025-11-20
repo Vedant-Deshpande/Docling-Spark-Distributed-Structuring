@@ -94,7 +94,7 @@ oc apply -f spark-scc-rolebindings.yaml
 helm install spark-operator spark-operator/spark-operator \
   --namespace kubeflow-spark-operator \
   --set webhook.enable=true \
-  --set webhook.port=8080
+  --set webhook.port=9443
 ```
 
 ### 4. Verify Installation
@@ -128,7 +128,14 @@ chmod +x k8s/deploy.sh
 ```
 
 ### 3. Retrieve Results
-Wait for the job to finish (check logs). The driver will stay alive for 60 minutes.
+Wait for the job to finish (check logs). As soon as you see this is your terminal
+```
+🎉 ALL DONE!
+✅ Enhanced processing complete!
+😴 Sleeping for 60 minutes to allow file download...
+   Run: kubectl cp docling-spark-job-driver:/app/output/results.jsonl ./output/results.jsonl -n docling-spark
+```
+Open another terminal and run the below command to save the results.
 
 ```bash
 # Copy results to your local machine
